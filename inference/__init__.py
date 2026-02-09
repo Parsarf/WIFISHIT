@@ -31,6 +31,18 @@ from inference.feature_extraction import (
 )
 from inference.representation import LinearEncoder, PCAEncoder, MLPEncoder
 from inference.inference_engine import InferenceEngine
+from inference.geometry_fusion import (
+    LinkGeometry,
+    LinkEvidence,
+    FusionOutput,
+    GeometryFieldFuser,
+)
+from inference.sensing_pipeline import (
+    LinkHealthMetrics,
+    SignalConditioner,
+    BaselineDriftModel,
+    MeasurementExtractor,
+)
 from inference.clustering import (
     SpatialCluster,
     LatentCluster,
@@ -76,6 +88,16 @@ __all__ = [
     "MLPEncoder",
     # Inference
     "InferenceEngine",
+    # Geometry fusion
+    "LinkGeometry",
+    "LinkEvidence",
+    "FusionOutput",
+    "GeometryFieldFuser",
+    # Sensing pipeline
+    "LinkHealthMetrics",
+    "SignalConditioner",
+    "BaselineDriftModel",
+    "MeasurementExtractor",
     # Clustering
     "SpatialCluster",
     "LatentCluster",

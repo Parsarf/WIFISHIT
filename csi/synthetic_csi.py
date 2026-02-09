@@ -145,6 +145,7 @@ class SyntheticCSIGenerator:
         self._tx_rx_distance = self._compute_distance(tx_position, rx_position)
         self._subcarrier_frequencies = self._compute_subcarrier_frequencies()
         self._wavelengths = self.SPEED_OF_LIGHT / self._subcarrier_frequencies
+        self._subcarrier_norm = self._subcarrier_frequencies / self._center_frequency_hz
 
     @property
     def tx_position(self) -> Tuple[float, float, float]:
@@ -350,6 +351,29 @@ class SyntheticCSIGenerator:
         # Phase accumulation over distance
         return 2.0 * math.pi * distance / wavelength
 
+    def _spectral_disturbance_profiles(
+        self,
+        disturbance: float,
+        timestamp: float,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Build disturbance-dependent subcarrier amplitude and phase profiles.
+
+        Adds multipath-like structure so motion is observable after
+        per-frame normalization and phase offset removal.
+        """
+        strength = float(np.tanh(disturbance))
+        theta = 2.0 * math.pi * self._subcarrier_norm
+
+        amp_profile = 1.0 + 0.42 * strength * np.cos(2.3 * theta - 0.35 * timestamp)
+        amp_profile *= 1.0 + 0.24 * strength * np.sin(4.1 * theta + 0.22 * timestamp)
+        amp_profile = np.clip(amp_profile, 0.35, 1.85)
+
+        phase_profile = 1.15 * strength * np.sin(1.7 * theta + 0.40 * timestamp)
+        phase_profile += 0.60 * strength * np.cos(3.6 * theta - 0.28 * timestamp)
+
+        return amp_profile, phase_profile
+
     def generate(self, timestamp: Optional[float] = None) -> SyntheticCSIFrame:
         """
         Generate a synthetic CSI frame at the current or specified time.
@@ -382,6 +406,10 @@ class SyntheticCSIGenerator:
         disturbance_amplitude_factor = self._disturbance_to_amplitude_factor(
             integrated_disturbance
         )
+        amp_profile, phase_profile = self._spectral_disturbance_profiles(
+            disturbance=integrated_disturbance,
+            timestamp=timestamp,
+        )
 
         # Compute per-subcarrier values
         amplitudes = np.zeros(self._num_subcarriers)
@@ -396,7 +424,7 @@ class SyntheticCSIGenerator:
             )
 
             # Combined amplitude: path loss * disturbance attenuation
-            amplitude = path_loss_amplitude * disturbance_amplitude_factor
+            amplitude = path_loss_amplitude * disturbance_amplitude_factor * amp_profile[i]
 
             # Baseline phase from distance
             baseline_phase = self._compute_baseline_phase(
@@ -409,7 +437,7 @@ class SyntheticCSIGenerator:
             )
 
             # Combined phase
-            phase = baseline_phase + disturbance_phase
+            phase = baseline_phase + disturbance_phase + phase_profile[i]
 
             amplitudes[i] = amplitude
             phases[i] = phase

@@ -516,6 +516,18 @@
                 sensor_count: 0,
                 csi_health: 'DISCONNECTED'
             },
+            field: {
+                type: 'floor',
+                width: 0,
+                height: 0,
+                data: [],
+                confidence_data: [],
+                resolution_m: 0.25,
+                origin: { x: -5, y: -5 },
+                min_value: 0,
+                max_value: 0
+            },
+            intermediate: null,
 
             // Timeline history (append-only from backend data)
             timeline: {
@@ -678,6 +690,15 @@
                 }
             }
 
+            // Field payload (optional, backward compatible)
+            if (data.field) {
+                state.field = data.field;
+            }
+
+            if (data.intermediate) {
+                state.intermediate = data.intermediate;
+            }
+
             // Append to timeline history
             appendToTimeline(data);
         }
@@ -788,38 +809,59 @@
             return { x: canvasX, y: canvasY };
         }
 
-        function generateHeatmapFromEntities() {
-            const resolution = CONFIG.HEATMAP_RESOLUTION;
-            const heatmap = new Array(resolution).fill(null).map(() => new Array(resolution).fill(0));
+        function buildHeatmapFromField() {
+            if (!state.field || !Array.isArray(state.field.data)) {
+                return null;
+            }
 
-            const room = CONFIG.ROOM;
-            const xStep = (room.X_MAX - room.X_MIN) / resolution;
-            const yStep = (room.Y_MAX - room.Y_MIN) / resolution;
+            const width = state.field.width || 0;
+            const height = state.field.height || 0;
+            const flat = state.field.data;
 
-            // Accumulate contributions from all entities
-            for (const entity of state.entities) {
-                const radius = entity.radius || 1.0;
-                const activity = entity.activity || 0;
+            if (width <= 0 || height <= 0 || flat.length !== width * height) {
+                return null;
+            }
 
-                for (let i = 0; i < resolution; i++) {
-                    for (let j = 0; j < resolution; j++) {
-                        const cellX = room.X_MIN + (i + 0.5) * xStep;
-                        const cellY = room.Y_MIN + (j + 0.5) * yStep;
+            const heatmap = new Array(width);
+            const confidenceFlat = Array.isArray(state.field.confidence_data) ? state.field.confidence_data : [];
+            const confidence = new Array(width);
+            let idx = 0;
+            for (let i = 0; i < width; i++) {
+                heatmap[i] = new Array(height);
+                confidence[i] = new Array(height);
+                for (let j = 0; j < height; j++) {
+                    heatmap[i][j] = flat[idx++];
+                }
+            }
 
-                        const dx = cellX - entity.x;
-                        const dy = cellY - entity.y;
-                        const dist = Math.sqrt(dx * dx + dy * dy);
-
-                        if (dist < radius * 2) {
-                            // Gaussian-like falloff
-                            const intensity = activity * Math.exp(-(dist * dist) / (2 * radius * radius));
-                            heatmap[i][j] += intensity;
-                        }
+            if (confidenceFlat.length === width * height) {
+                let cidx = 0;
+                for (let i = 0; i < width; i++) {
+                    for (let j = 0; j < height; j++) {
+                        confidence[i][j] = Math.max(0, Math.min(1, confidenceFlat[cidx++]));
+                    }
+                }
+            } else {
+                for (let i = 0; i < width; i++) {
+                    for (let j = 0; j < height; j++) {
+                        confidence[i][j] = 1.0;
                     }
                 }
             }
 
-            return heatmap;
+            // Normalize to [0, 1] for consistent rendering.
+            const minVal = Number.isFinite(state.field.min_value) ? state.field.min_value : 0;
+            const maxVal = Number.isFinite(state.field.max_value) ? state.field.max_value : 0;
+            const range = maxVal - minVal;
+            if (range > 1e-8) {
+                for (let i = 0; i < width; i++) {
+                    for (let j = 0; j < height; j++) {
+                        heatmap[i][j] = (heatmap[i][j] - minVal) / range;
+                    }
+                }
+            }
+
+            return { heatmap, confidence };
         }
 
         function intensityToColor(intensity) {
@@ -890,9 +932,17 @@
                 ctx.stroke();
             }
 
-            // Draw heatmap
-            const heatmap = generateHeatmapFromEntities();
-            const resolution = CONFIG.HEATMAP_RESOLUTION;
+            // Draw heatmap (backend fused field only)
+            const backendHeatmap = buildHeatmapFromField();
+            if (!backendHeatmap) {
+                document.getElementById('vizOverlay').textContent =
+                    `VIEW: 2D FLOOR | ENTITIES: ${state.entities.length} | SOURCE: NO FIELD`;
+                return;
+            }
+
+            const heatmap = backendHeatmap.heatmap;
+            const confidence = backendHeatmap.confidence;
+            const resolution = heatmap.length;
             const cellWidth = width / resolution;
             const cellHeight = height / resolution;
 
@@ -901,7 +951,8 @@
                     const intensity = heatmap[i][j];
                     if (intensity > 0.01) {
                         ctx.fillStyle = intensityToColor(intensity);
-                        ctx.globalAlpha = Math.min(0.8, intensity + 0.2);
+                        const conf = confidence[i][j];
+                        ctx.globalAlpha = Math.min(0.9, (intensity + 0.2) * conf);
                         ctx.fillRect(
                             padding + i * cellWidth,
                             padding + (resolution - 1 - j) * cellHeight,
@@ -947,7 +998,7 @@
 
             // Update overlay
             document.getElementById('vizOverlay').textContent =
-                `VIEW: 2D FLOOR | ENTITIES: ${state.entities.length} | SCALE: 1m/div`;
+                `VIEW: 2D FLOOR | ENTITIES: ${state.entities.length} | SOURCE: GEOMETRY FUSION | SCALE: 1m/div`;
         }
 
         function renderSliceView(ctx, canvas) {
