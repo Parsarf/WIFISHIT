@@ -178,6 +178,8 @@ class GeometryFieldFuser:
         persistence_frames: int = 3,
         min_activity: float = 0.01,
         min_health: float = 0.35,
+        log_fusion_weight: float = 0.75,
+        multi_link_sharpening: float = 0.35,
     ) -> None:
         if not geometries:
             raise ValueError("geometries must not be empty")
@@ -187,6 +189,10 @@ class GeometryFieldFuser:
             raise ValueError("thresholds must satisfy 0 <= exit <= enter <= 1")
         if persistence_frames < 1:
             raise ValueError("persistence_frames must be >= 1")
+        if not (0.0 <= log_fusion_weight <= 1.0):
+            raise ValueError("log_fusion_weight must be in [0, 1]")
+        if multi_link_sharpening < 0.0 or not np.isfinite(multi_link_sharpening):
+            raise ValueError("multi_link_sharpening must be finite and >= 0")
 
         self._geometries = {g.link_id: g for g in geometries}
         self._origin_xy = origin_xy
@@ -197,6 +203,8 @@ class GeometryFieldFuser:
         self._persistence_frames = persistence_frames
         self._min_activity = min_activity
         self._min_health = min_health
+        self._log_fusion_weight = log_fusion_weight
+        self._multi_link_sharpening = multi_link_sharpening
 
         self._kernels = LinkKernelCache(origin_xy, dimensions_xy, resolution)
         self._shape = self._kernels.shape
@@ -215,15 +223,14 @@ class GeometryFieldFuser:
         return self._shape
 
     def fuse(self, evidence_map: Dict[str, LinkEvidence], timestamp: float) -> FusionOutput:
-        evidence_sum = np.zeros(self._shape, dtype=np.float64)
         support_sum = np.zeros(self._shape, dtype=np.float64)
         health_num = np.zeros(self._shape, dtype=np.float64)
         health_den = np.zeros(self._shape, dtype=np.float64)
 
         link_weights: Dict[str, float] = {}
         kernel_maps: List[np.ndarray] = []
+        weights: List[float] = []
         active_links: List[str] = []
-        strengths: List[float] = []
 
         for link_id, geometry in self._geometries.items():
             ev = evidence_map.get(link_id)
@@ -242,28 +249,33 @@ class GeometryFieldFuser:
             kernel = self._kernels.get(geometry)
             strength = activity * ev.health_score * ev.confidence
 
-            contribution = kernel * strength
-            evidence_sum += contribution
             support_sum += kernel * ev.health_score
             health_num += kernel * ev.health_score * ev.confidence
-            health_den += kernel
+            health_den += kernel * ev.health_score
 
             kernel_maps.append(kernel)
-            strengths.append(strength)
+            weights.append(strength)
             link_weights[link_id] = float(strength)
             active_links.append(link_id)
 
         if active_links:
             stack = np.stack(kernel_maps, axis=0)
-            avg_shape = np.mean(stack, axis=0)
+            weight_vec = np.asarray(weights, dtype=np.float64)
+            weight_sum = float(np.sum(weight_vec))
+            weight_norm = weight_vec / max(weight_sum, 1e-9)
+            weight_view = weight_norm[:, np.newaxis, np.newaxis]
+
+            linear_map = np.sum(stack * weight_view, axis=0)
+            log_map = np.exp(
+                np.sum(np.log(np.clip(stack, 1e-9, 1.0)) * weight_view, axis=0)
+            )
+            shape_map = (1.0 - self._log_fusion_weight) * linear_map + self._log_fusion_weight * log_map
 
             if len(kernel_maps) >= 2:
-                intersection_shape = np.prod(np.clip(stack, 1e-9, 1.0), axis=0) ** (1.0 / len(kernel_maps))
-                shape_map = 0.35 * avg_shape + 0.65 * intersection_shape
-            else:
-                shape_map = avg_shape
+                gamma = 1.0 + self._multi_link_sharpening * (len(kernel_maps) - 1)
+                shape_map = np.power(np.clip(shape_map, 0.0, 1.0), gamma)
 
-            mean_strength = float(np.mean(strengths))
+            mean_strength = float(np.mean(weight_vec))
             instantaneous = shape_map * mean_strength
         else:
             instantaneous = np.zeros(self._shape, dtype=np.float64)
@@ -290,8 +302,11 @@ class GeometryFieldFuser:
 
         if len(kernel_maps) >= 2:
             stack = np.stack(kernel_maps, axis=0)
-            mean = np.mean(stack, axis=0)
-            std = np.std(stack, axis=0)
+            weight_vec = np.asarray(weights, dtype=np.float64)
+            weight_view = (weight_vec / max(float(np.sum(weight_vec)), 1e-9))[:, np.newaxis, np.newaxis]
+            mean = np.sum(stack * weight_view, axis=0)
+            var = np.sum(weight_view * (stack - mean) ** 2, axis=0)
+            std = np.sqrt(np.maximum(var, 0.0))
             conflict = np.clip(std / np.maximum(mean, 1e-9), 0.0, 1.0)
         else:
             conflict = np.zeros(self._shape, dtype=np.float64)

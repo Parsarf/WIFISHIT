@@ -93,6 +93,8 @@ class ServerConfig:
     fusion_persistence_frames: int = 3
     fusion_min_activity: float = 0.01
     fusion_min_health: float = 0.35
+    fusion_log_fusion_weight: float = 0.75
+    fusion_multi_link_sharpening: float = 0.35
 
 
 @dataclass
@@ -256,6 +258,8 @@ class SystemStateManager:
             persistence_frames=config.fusion_persistence_frames,
             min_activity=config.fusion_min_activity,
             min_health=config.fusion_min_health,
+            log_fusion_weight=config.fusion_log_fusion_weight,
+            multi_link_sharpening=config.fusion_multi_link_sharpening,
         )
 
         self._heatmap_x_scale = room_x_size / self._fuser.shape[0]
