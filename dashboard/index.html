@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSI Spatial Sensing Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0a0a0f;
+            color: #e0e0e0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(90deg, #1a1a2e 0%, #16213e 100%);
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #2a2a4a;
+        }
+
+        .header h1 {
+            font-size: 1.4rem;
+            font-weight: 500;
+            color: #00d4ff;
+            letter-spacing: 1px;
+        }
+
+        .header-status {
+            display: flex;
+            gap: 24px;
+            align-items: center;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #00ff88;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.disconnected {
+            background: #ff4444;
+            animation: none;
+        }
+
+        .status-dot.connecting {
+            background: #ffaa00;
+            animation: pulse 0.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Main Layout */
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Left Panel */
+        .left-panel {
+            width: 280px;
+            background: #12121a;
+            border-right: 1px solid #2a2a4a;
+            padding: 16px;
+            overflow-y: auto;
+        }
+
+        .panel-section {
+            margin-bottom: 24px;
+        }
+
+        .panel-section h3 {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #888;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #2a2a4a;
+        }
+
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #1a1a2a;
+        }
+
+        .metric-label {
+            font-size: 0.85rem;
+            color: #aaa;
+        }
+
+        .metric-value {
+            font-size: 1rem;
+            font-weight: 600;
+            font-family: 'Consolas', monospace;
+        }
+
+        .metric-value.highlight {
+            color: #00d4ff;
+        }
+
+        .metric-value.warning {
+            color: #ffaa00;
+        }
+
+        .metric-value.danger {
+            color: #ff4444;
+        }
+
+        .metric-value.success {
+            color: #00ff88;
+        }
+
+        /* Entity List */
+        .entity-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .entity-item {
+            background: #1a1a2a;
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 8px;
+            border-left: 3px solid #00d4ff;
+        }
+
+        .entity-item .entity-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+
+        .entity-item .entity-id {
+            font-weight: 600;
+            color: #00d4ff;
+        }
+
+        .entity-item .entity-activity {
+            font-size: 0.8rem;
+        }
+
+        .entity-item .entity-pos {
+            font-size: 0.75rem;
+            color: #888;
+            font-family: 'Consolas', monospace;
+        }
+
+        .no-entities {
+            color: #666;
+            font-style: italic;
+            text-align: center;
+            padding: 20px;
+        }
+
+        /* Center Content */
+        .center-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 16px;
+            gap: 16px;
+            overflow: hidden;
+        }
+
+        /* View Tabs */
+        .view-tabs {
+            display: flex;
+            gap: 8px;
+        }
+
+        .view-tab {
+            padding: 8px 16px;
+            background: #1a1a2a;
+            border: 1px solid #2a2a4a;
+            border-radius: 6px;
+            color: #888;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        .view-tab:hover {
+            background: #2a2a3a;
+            color: #ccc;
+        }
+
+        .view-tab.active {
+            background: #00d4ff22;
+            border-color: #00d4ff;
+            color: #00d4ff;
+        }
+
+        /* Visualization Container */
+        .viz-container {
+            flex: 1;
+            background: #0f0f18;
+            border: 1px solid #2a2a4a;
+            border-radius: 8px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .viz-canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .viz-overlay {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-family: 'Consolas', monospace;
+        }
+
+        /* Timeline */
+        .timeline-container {
+            height: 120px;
+            background: #0f0f18;
+            border: 1px solid #2a2a4a;
+            border-radius: 8px;
+            padding: 12px;
+        }
+
+        .timeline-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .timeline-title {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #888;
+        }
+
+        .timeline-canvas {
+            width: 100%;
+            height: 80px;
+        }
+
+        /* Status Bar */
+        .status-bar {
+            background: #12121a;
+            border-top: 1px solid #2a2a4a;
+            padding: 8px 24px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: #888;
+        }
+
+        .status-bar-left, .status-bar-right {
+            display: flex;
+            gap: 24px;
+        }
+
+        .status-bar-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .csi-health {
+            font-weight: 600;
+        }
+
+        .csi-health.nominal {
+            color: #00ff88;
+        }
+
+        .csi-health.degraded {
+            color: #ffaa00;
+        }
+
+        .csi-health.disconnected {
+            color: #ff4444;
+        }
+
+        /* Color Scale Legend */
+        .color-scale {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 20px;
+            height: 150px;
+            border-radius: 4px;
+            background: linear-gradient(to bottom, #ff4444, #ffaa00, #00ff88, #00d4ff, #0044ff);
+        }
+
+        .color-scale-labels {
+            position: absolute;
+            right: 36px;
+            top: 50%;
+            transform: translateY(-50%);
+            height: 150px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            font-size: 0.65rem;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <h1>CSI SPATIAL SENSING DASHBOARD</h1>
+        <div class="header-status">
+            <div class="status-item">
+                <span class="status-dot" id="connectionDot"></span>
+                <span id="connectionStatus">CONNECTING...</span>
+            </div>
+            <div class="status-item">
+                <span>TIME:</span>
+                <span id="systemTime">--:--:--</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="main-container">
+        <!-- Left Panel -->
+        <aside class="left-panel">
+            <!-- Global Metrics -->
+            <div class="panel-section">
+                <h3>Global Metrics</h3>
+                <div class="metric-row">
+                    <span class="metric-label">Total Activity</span>
+                    <span class="metric-value highlight" id="totalActivity">0.00</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Novelty</span>
+                    <span class="metric-value" id="novelty">0.00</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Env Drift</span>
+                    <span class="metric-value" id="envDrift">0.00</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Entity Count</span>
+                    <span class="metric-value highlight" id="entityCount">0</span>
+                </div>
+            </div>
+
+            <!-- Detected Entities -->
+            <div class="panel-section">
+                <h3>Detected Entities</h3>
+                <div class="entity-list" id="entityList">
+                    <div class="no-entities">No entities detected</div>
+                </div>
+            </div>
+
+            <!-- System Stats -->
+            <div class="panel-section">
+                <h3>System Stats</h3>
+                <div class="metric-row">
+                    <span class="metric-label">FPS</span>
+                    <span class="metric-value" id="fps">0.0</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Latency</span>
+                    <span class="metric-value" id="latency">-- ms</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Sensors</span>
+                    <span class="metric-value" id="sensorCount">0</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Center Content -->
+        <main class="center-content">
+            <!-- View Tabs -->
+            <div class="view-tabs">
+                <button class="view-tab active" data-view="2d">2D Floor View</button>
+                <button class="view-tab" data-view="slice">Vertical Slice</button>
+                <button class="view-tab" data-view="3d">3D View</button>
+            </div>
+
+            <!-- Visualization -->
+            <div class="viz-container">
+                <canvas class="viz-canvas" id="vizCanvas"></canvas>
+                <div class="viz-overlay" id="vizOverlay">
+                    VIEW: 2D FLOOR | SCALE: 1m/div
+                </div>
+                <div class="color-scale"></div>
+                <div class="color-scale-labels">
+                    <span>High</span>
+                    <span>Med</span>
+                    <span>Low</span>
+                </div>
+            </div>
+
+            <!-- Timeline -->
+            <div class="timeline-container">
+                <div class="timeline-header">
+                    <span class="timeline-title">Activity Timeline</span>
+                    <span class="timeline-title" id="timelineRange">Last 60s</span>
+                </div>
+                <canvas class="timeline-canvas" id="timelineCanvas"></canvas>
+            </div>
+        </main>
+    </div>
+
+    <!-- Status Bar -->
+    <footer class="status-bar">
+        <div class="status-bar-left">
+            <div class="status-bar-item">
+                <span>CSI HEALTH:</span>
+                <span class="csi-health disconnected" id="csiHealth">DISCONNECTED</span>
+            </div>
+            <div class="status-bar-item">
+                <span>BACKEND:</span>
+                <span id="backendUrl">ws://localhost:8000/ws</span>
+            </div>
+        </div>
+        <div class="status-bar-right">
+            <div class="status-bar-item">
+                <span>LAST UPDATE:</span>
+                <span id="lastUpdate">Never</span>
+            </div>
+            <div class="status-bar-item">
+                <span>MSG COUNT:</span>
+                <span id="msgCount">0</span>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // =============================================================================
+        // CONFIGURATION
+        // =============================================================================
+
+        const CONFIG = {
+            // WebSocket endpoint - modify this to change backend URL
+            WS_URL: 'ws://localhost:8000/ws',
+
+            // Reconnection settings
+            RECONNECT_INTERVAL_MS: 3000,
+            MAX_RECONNECT_ATTEMPTS: Infinity,
+
+            // Timeline history length (seconds)
+            TIMELINE_HISTORY_SECONDS: 60,
+
+            // Room dimensions for visualization (meters)
+            ROOM: {
+                X_MIN: -5,
+                X_MAX: 5,
+                Y_MIN: -5,
+                Y_MAX: 5,
+                Z_MIN: 0,
+                Z_MAX: 3
+            },
+
+            // Heatmap settings
+            HEATMAP_RESOLUTION: 50,
+
+            // Render settings
+            TARGET_FPS: 30
+        };
+
+        // =============================================================================
+        // STATE (READ-ONLY FOR RENDER LOOP)
+        // =============================================================================
+
+        const state = {
+            // Connection state
+            connected: false,
+            connecting: true,
+
+            // Data from backend (authoritative)
+            timestamp: 0,
+            entities: [],
+            global: {
+                total_activity: 0,
+                novelty: 0,
+                env_drift: 0
+            },
+            system: {
+                fps: 0,
+                latency_ms: 0,
+                sensor_count: 0,
+                csi_health: 'DISCONNECTED'
+            },
+
+            // Timeline history (append-only from backend data)
+            timeline: {
+                timestamps: [],
+                activity: [],
+                novelty: [],
+                entity_count: []
+            },
+
+            // UI state
+            currentView: '2d',
+            messageCount: 0,
+            lastUpdateTime: null
+        };
+
+        // =============================================================================
+        // WEBSOCKET CLIENT
+        // =============================================================================
+
+        let ws = null;
+        let reconnectAttempts = 0;
+
+        function connectWebSocket() {
+            // Close any existing connection
+            if (ws) {
+                try {
+                    ws.close();
+                } catch (e) {
+                    // Ignore close errors
+                }
+                ws = null;
+            }
+
+            state.connecting = true;
+            state.connected = false;
+            updateConnectionUI();
+
+            console.log('[WebSocket] Attempting connection to:', CONFIG.WS_URL);
+
+            try {
+                ws = new WebSocket(CONFIG.WS_URL);
+
+                ws.onopen = () => {
+                    console.log('[WebSocket] Connected successfully to', CONFIG.WS_URL);
+                    state.connected = true;
+                    state.connecting = false;
+                    reconnectAttempts = 0;
+                    updateConnectionUI();
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        handleBackendMessage(data);
+                    } catch (e) {
+                        console.error('[WebSocket] Failed to parse message:', e);
+                    }
+                };
+
+                ws.onclose = (event) => {
+                    console.log('[WebSocket] Connection closed. Code:', event.code, 'Reason:', event.reason || 'none');
+                    state.connected = false;
+                    state.connecting = false;
+                    state.system.csi_health = 'DISCONNECTED';
+                    updateConnectionUI();
+                    scheduleReconnect();
+                };
+
+                ws.onerror = (error) => {
+                    console.error('[WebSocket] Connection error to', CONFIG.WS_URL);
+                    console.error('[WebSocket] Ensure backend is running at', CONFIG.WS_URL);
+                    state.connected = false;
+                    state.connecting = false;
+                    updateConnectionUI();
+                    // Note: onclose will fire after onerror and handle reconnection
+                };
+
+            } catch (e) {
+                console.error('[WebSocket] Failed to create WebSocket:', e.message);
+                console.error('[WebSocket] URL:', CONFIG.WS_URL);
+                state.connecting = false;
+                state.connected = false;
+                updateConnectionUI();
+                scheduleReconnect();
+            }
+        }
+
+        function scheduleReconnect() {
+            if (reconnectAttempts < CONFIG.MAX_RECONNECT_ATTEMPTS) {
+                reconnectAttempts++;
+                const seconds = (CONFIG.RECONNECT_INTERVAL_MS / 1000).toFixed(1);
+                console.log(`[WebSocket] Reconnecting in ${seconds}s (attempt ${reconnectAttempts}) to ${CONFIG.WS_URL}`);
+                setTimeout(connectWebSocket, CONFIG.RECONNECT_INTERVAL_MS);
+            } else {
+                console.error('[WebSocket] Max reconnection attempts reached. Refresh page to retry.');
+            }
+        }
+
+        function updateConnectionUI() {
+            const dot = document.getElementById('connectionDot');
+            const status = document.getElementById('connectionStatus');
+
+            if (state.connected) {
+                dot.className = 'status-dot';
+                status.textContent = 'CONNECTED';
+            } else if (state.connecting) {
+                dot.className = 'status-dot connecting';
+                status.textContent = 'CONNECTING...';
+            } else {
+                dot.className = 'status-dot disconnected';
+                status.textContent = 'DISCONNECTED';
+            }
+        }
+
+        // =============================================================================
+        // BACKEND MESSAGE HANDLER
+        // =============================================================================
+
+        function handleBackendMessage(data) {
+            // Update message count
+            state.messageCount++;
+            state.lastUpdateTime = new Date();
+
+            // Update timestamp
+            if (data.timestamp !== undefined) {
+                state.timestamp = data.timestamp;
+            }
+
+            // Replace entities entirely (authoritative)
+            if (data.entities !== undefined) {
+                state.entities = data.entities;
+            }
+
+            // Update global metrics
+            if (data.global) {
+                if (data.global.total_activity !== undefined) {
+                    state.global.total_activity = data.global.total_activity;
+                }
+                if (data.global.novelty !== undefined) {
+                    state.global.novelty = data.global.novelty;
+                }
+                if (data.global.env_drift !== undefined) {
+                    state.global.env_drift = data.global.env_drift;
+                }
+            }
+
+            // Update system metrics
+            if (data.system) {
+                if (data.system.fps !== undefined) {
+                    state.system.fps = data.system.fps;
+                }
+                if (data.system.latency_ms !== undefined) {
+                    state.system.latency_ms = data.system.latency_ms;
+                }
+                if (data.system.sensor_count !== undefined) {
+                    state.system.sensor_count = data.system.sensor_count;
+                }
+                if (data.system.csi_health !== undefined) {
+                    state.system.csi_health = data.system.csi_health;
+                }
+            }
+
+            // Append to timeline history
+            appendToTimeline(data);
+        }
+
+        function appendToTimeline(data) {
+            const now = data.timestamp || Date.now() / 1000;
+
+            state.timeline.timestamps.push(now);
+            state.timeline.activity.push(data.global?.total_activity || 0);
+            state.timeline.novelty.push(data.global?.novelty || 0);
+            state.timeline.entity_count.push(data.entities?.length || 0);
+
+            // Trim old data beyond timeline window
+            const cutoff = now - CONFIG.TIMELINE_HISTORY_SECONDS;
+            while (state.timeline.timestamps.length > 0 && state.timeline.timestamps[0] < cutoff) {
+                state.timeline.timestamps.shift();
+                state.timeline.activity.shift();
+                state.timeline.novelty.shift();
+                state.timeline.entity_count.shift();
+            }
+        }
+
+        // =============================================================================
+        // UI UPDATE FUNCTIONS (FROM STATE ONLY)
+        // =============================================================================
+
+        function updateMetricsUI() {
+            // Global metrics
+            document.getElementById('totalActivity').textContent = state.global.total_activity.toFixed(2);
+            document.getElementById('novelty').textContent = state.global.novelty.toFixed(2);
+            document.getElementById('envDrift').textContent = state.global.env_drift.toFixed(2);
+            document.getElementById('entityCount').textContent = state.entities.length;
+
+            // System metrics
+            document.getElementById('fps').textContent = state.system.fps.toFixed(1);
+            document.getElementById('latency').textContent = state.system.latency_ms.toFixed(1) + ' ms';
+            document.getElementById('sensorCount').textContent = state.system.sensor_count;
+
+            // CSI Health
+            const healthEl = document.getElementById('csiHealth');
+            healthEl.textContent = state.system.csi_health;
+            healthEl.className = 'csi-health ' + state.system.csi_health.toLowerCase();
+
+            // Status bar
+            document.getElementById('msgCount').textContent = state.messageCount;
+            if (state.lastUpdateTime) {
+                document.getElementById('lastUpdate').textContent = state.lastUpdateTime.toLocaleTimeString();
+            }
+
+            // System time
+            document.getElementById('systemTime').textContent = new Date().toLocaleTimeString();
+        }
+
+        function updateEntityListUI() {
+            const listEl = document.getElementById('entityList');
+
+            if (state.entities.length === 0) {
+                listEl.innerHTML = '<div class="no-entities">No entities detected</div>';
+                return;
+            }
+
+            listEl.innerHTML = state.entities.map(entity => {
+                const activityClass = entity.activity > 0.7 ? 'success' :
+                                     entity.activity > 0.3 ? 'warning' : '';
+                return `
+                    <div class="entity-item">
+                        <div class="entity-header">
+                            <span class="entity-id">Entity #${entity.id}</span>
+                            <span class="entity-activity ${activityClass}">${(entity.activity * 100).toFixed(0)}%</span>
+                        </div>
+                        <div class="entity-pos">
+                            (${entity.x.toFixed(2)}, ${entity.y.toFixed(2)}, ${entity.z.toFixed(2)}) m
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // =============================================================================
+        // CANVAS RENDERING (READ-ONLY - NEVER MODIFIES STATE)
+        // =============================================================================
+
+        const vizCanvas = document.getElementById('vizCanvas');
+        const vizCtx = vizCanvas.getContext('2d');
+        const timelineCanvas = document.getElementById('timelineCanvas');
+        const timelineCtx = timelineCanvas.getContext('2d');
+
+        function resizeCanvases() {
+            // Visualization canvas
+            const vizContainer = vizCanvas.parentElement;
+            vizCanvas.width = vizContainer.clientWidth;
+            vizCanvas.height = vizContainer.clientHeight;
+
+            // Timeline canvas
+            const timelineContainer = timelineCanvas.parentElement;
+            timelineCanvas.width = timelineContainer.clientWidth - 24;
+            timelineCanvas.height = 80;
+        }
+
+        function worldToCanvas(x, y, canvas) {
+            const room = CONFIG.ROOM;
+            const width = canvas.width - 80;
+            const height = canvas.height - 40;
+
+            const canvasX = 40 + ((x - room.X_MIN) / (room.X_MAX - room.X_MIN)) * width;
+            const canvasY = 20 + ((room.Y_MAX - y) / (room.Y_MAX - room.Y_MIN)) * height;
+
+            return { x: canvasX, y: canvasY };
+        }
+
+        function generateHeatmapFromEntities() {
+            const resolution = CONFIG.HEATMAP_RESOLUTION;
+            const heatmap = new Array(resolution).fill(null).map(() => new Array(resolution).fill(0));
+
+            const room = CONFIG.ROOM;
+            const xStep = (room.X_MAX - room.X_MIN) / resolution;
+            const yStep = (room.Y_MAX - room.Y_MIN) / resolution;
+
+            // Accumulate contributions from all entities
+            for (const entity of state.entities) {
+                const radius = entity.radius || 1.0;
+                const activity = entity.activity || 0;
+
+                for (let i = 0; i < resolution; i++) {
+                    for (let j = 0; j < resolution; j++) {
+                        const cellX = room.X_MIN + (i + 0.5) * xStep;
+                        const cellY = room.Y_MIN + (j + 0.5) * yStep;
+
+                        const dx = cellX - entity.x;
+                        const dy = cellY - entity.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+
+                        if (dist < radius * 2) {
+                            // Gaussian-like falloff
+                            const intensity = activity * Math.exp(-(dist * dist) / (2 * radius * radius));
+                            heatmap[i][j] += intensity;
+                        }
+                    }
+                }
+            }
+
+            return heatmap;
+        }
+
+        function intensityToColor(intensity) {
+            // Map intensity 0-1 to color gradient
+            const clamped = Math.max(0, Math.min(1, intensity));
+
+            if (clamped < 0.25) {
+                // Blue to cyan
+                const t = clamped / 0.25;
+                return `rgb(0, ${Math.floor(100 * t)}, ${Math.floor(200 + 55 * t)})`;
+            } else if (clamped < 0.5) {
+                // Cyan to green
+                const t = (clamped - 0.25) / 0.25;
+                return `rgb(0, ${Math.floor(150 + 105 * t)}, ${Math.floor(255 - 155 * t)})`;
+            } else if (clamped < 0.75) {
+                // Green to yellow
+                const t = (clamped - 0.5) / 0.25;
+                return `rgb(${Math.floor(255 * t)}, 255, ${Math.floor(100 * (1 - t))})`;
+            } else {
+                // Yellow to red
+                const t = (clamped - 0.75) / 0.25;
+                return `rgb(255, ${Math.floor(255 * (1 - t))}, 0)`;
+            }
+        }
+
+        function renderVisualization() {
+            const ctx = vizCtx;
+            const canvas = vizCanvas;
+
+            // Clear canvas
+            ctx.fillStyle = '#0a0a12';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (state.currentView === '2d') {
+                render2DView(ctx, canvas);
+            } else if (state.currentView === 'slice') {
+                renderSliceView(ctx, canvas);
+            } else if (state.currentView === '3d') {
+                render3DView(ctx, canvas);
+            }
+        }
+
+        function render2DView(ctx, canvas) {
+            const room = CONFIG.ROOM;
+            const padding = 40;
+            const width = canvas.width - padding * 2 - 40;
+            const height = canvas.height - padding * 2;
+
+            // Draw grid
+            ctx.strokeStyle = '#1a1a2a';
+            ctx.lineWidth = 1;
+
+            const gridSpacing = 1; // 1 meter
+            for (let x = room.X_MIN; x <= room.X_MAX; x += gridSpacing) {
+                const pos = worldToCanvas(x, room.Y_MIN, canvas);
+                const posEnd = worldToCanvas(x, room.Y_MAX, canvas);
+                ctx.beginPath();
+                ctx.moveTo(pos.x, pos.y);
+                ctx.lineTo(posEnd.x, posEnd.y);
+                ctx.stroke();
+            }
+            for (let y = room.Y_MIN; y <= room.Y_MAX; y += gridSpacing) {
+                const pos = worldToCanvas(room.X_MIN, y, canvas);
+                const posEnd = worldToCanvas(room.X_MAX, y, canvas);
+                ctx.beginPath();
+                ctx.moveTo(pos.x, pos.y);
+                ctx.lineTo(posEnd.x, posEnd.y);
+                ctx.stroke();
+            }
+
+            // Draw heatmap
+            const heatmap = generateHeatmapFromEntities();
+            const resolution = CONFIG.HEATMAP_RESOLUTION;
+            const cellWidth = width / resolution;
+            const cellHeight = height / resolution;
+
+            for (let i = 0; i < resolution; i++) {
+                for (let j = 0; j < resolution; j++) {
+                    const intensity = heatmap[i][j];
+                    if (intensity > 0.01) {
+                        ctx.fillStyle = intensityToColor(intensity);
+                        ctx.globalAlpha = Math.min(0.8, intensity + 0.2);
+                        ctx.fillRect(
+                            padding + i * cellWidth,
+                            padding + (resolution - 1 - j) * cellHeight,
+                            cellWidth + 1,
+                            cellHeight + 1
+                        );
+                    }
+                }
+            }
+            ctx.globalAlpha = 1;
+
+            // Draw entity markers
+            for (const entity of state.entities) {
+                const pos = worldToCanvas(entity.x, entity.y, canvas);
+
+                // Entity circle
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, 8, 0, Math.PI * 2);
+                ctx.fillStyle = '#00d4ff';
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Entity ID label
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '10px Consolas';
+                ctx.textAlign = 'center';
+                ctx.fillText(`#${entity.id}`, pos.x, pos.y - 14);
+            }
+
+            // Draw axis labels
+            ctx.fillStyle = '#888';
+            ctx.font = '11px Segoe UI';
+            ctx.textAlign = 'center';
+            ctx.fillText('X (m)', canvas.width / 2, canvas.height - 5);
+
+            ctx.save();
+            ctx.translate(12, canvas.height / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText('Y (m)', 0, 0);
+            ctx.restore();
+
+            // Update overlay
+            document.getElementById('vizOverlay').textContent =
+                `VIEW: 2D FLOOR | ENTITIES: ${state.entities.length} | SCALE: 1m/div`;
+        }
+
+        function renderSliceView(ctx, canvas) {
+            const room = CONFIG.ROOM;
+            const padding = 40;
+            const width = canvas.width - padding * 2 - 40;
+            const height = canvas.height - padding * 2;
+
+            // Draw grid
+            ctx.strokeStyle = '#1a1a2a';
+            ctx.lineWidth = 1;
+
+            // Vertical lines (X axis)
+            for (let x = room.X_MIN; x <= room.X_MAX; x += 1) {
+                const xPos = padding + ((x - room.X_MIN) / (room.X_MAX - room.X_MIN)) * width;
+                ctx.beginPath();
+                ctx.moveTo(xPos, padding);
+                ctx.lineTo(xPos, padding + height);
+                ctx.stroke();
+            }
+
+            // Horizontal lines (Z axis)
+            for (let z = room.Z_MIN; z <= room.Z_MAX; z += 0.5) {
+                const yPos = padding + height - ((z - room.Z_MIN) / (room.Z_MAX - room.Z_MIN)) * height;
+                ctx.beginPath();
+                ctx.moveTo(padding, yPos);
+                ctx.lineTo(padding + width, yPos);
+                ctx.stroke();
+            }
+
+            // Draw entities in XZ projection
+            for (const entity of state.entities) {
+                const xPos = padding + ((entity.x - room.X_MIN) / (room.X_MAX - room.X_MIN)) * width;
+                const zPos = padding + height - ((entity.z - room.Z_MIN) / (room.Z_MAX - room.Z_MIN)) * height;
+                const radius = (entity.radius || 1.0) / (room.X_MAX - room.X_MIN) * width * 0.5;
+
+                // Activity halo
+                ctx.beginPath();
+                ctx.arc(xPos, zPos, radius, 0, Math.PI * 2);
+                ctx.fillStyle = intensityToColor(entity.activity);
+                ctx.globalAlpha = 0.3;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+
+                // Entity marker
+                ctx.beginPath();
+                ctx.arc(xPos, zPos, 6, 0, Math.PI * 2);
+                ctx.fillStyle = '#00d4ff';
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            // Axis labels
+            ctx.fillStyle = '#888';
+            ctx.font = '11px Segoe UI';
+            ctx.textAlign = 'center';
+            ctx.fillText('X (m)', canvas.width / 2, canvas.height - 5);
+
+            ctx.save();
+            ctx.translate(12, canvas.height / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText('Z (m)', 0, 0);
+            ctx.restore();
+
+            document.getElementById('vizOverlay').textContent =
+                `VIEW: VERTICAL SLICE (XZ) | ENTITIES: ${state.entities.length}`;
+        }
+
+        function render3DView(ctx, canvas) {
+            const room = CONFIG.ROOM;
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const scale = Math.min(canvas.width, canvas.height) * 0.06;
+
+            // Isometric projection helpers
+            const isoX = (x, y) => centerX + (x - y) * scale * 0.866;
+            const isoY = (x, y, z) => centerY + (x + y) * scale * 0.5 - z * scale;
+
+            // Draw floor grid
+            ctx.strokeStyle = '#1a1a2a';
+            ctx.lineWidth = 1;
+
+            for (let x = room.X_MIN; x <= room.X_MAX; x += 1) {
+                ctx.beginPath();
+                ctx.moveTo(isoX(x, room.Y_MIN), isoY(x, room.Y_MIN, 0));
+                ctx.lineTo(isoX(x, room.Y_MAX), isoY(x, room.Y_MAX, 0));
+                ctx.stroke();
+            }
+            for (let y = room.Y_MIN; y <= room.Y_MAX; y += 1) {
+                ctx.beginPath();
+                ctx.moveTo(isoX(room.X_MIN, y), isoY(room.X_MIN, y, 0));
+                ctx.lineTo(isoX(room.X_MAX, y), isoY(room.X_MAX, y, 0));
+                ctx.stroke();
+            }
+
+            // Draw vertical edges
+            const corners = [
+                [room.X_MIN, room.Y_MIN],
+                [room.X_MAX, room.Y_MIN],
+                [room.X_MAX, room.Y_MAX],
+                [room.X_MIN, room.Y_MAX]
+            ];
+
+            ctx.strokeStyle = '#2a2a4a';
+            for (const [x, y] of corners) {
+                ctx.beginPath();
+                ctx.moveTo(isoX(x, y), isoY(x, y, 0));
+                ctx.lineTo(isoX(x, y), isoY(x, y, room.Z_MAX));
+                ctx.stroke();
+            }
+
+            // Draw entities
+            for (const entity of state.entities) {
+                const px = isoX(entity.x, entity.y);
+                const py = isoY(entity.x, entity.y, entity.z);
+                const radius = entity.radius || 1.0;
+
+                // Shadow on floor
+                ctx.beginPath();
+                ctx.ellipse(
+                    isoX(entity.x, entity.y),
+                    isoY(entity.x, entity.y, 0),
+                    radius * scale * 0.5,
+                    radius * scale * 0.25,
+                    0, 0, Math.PI * 2
+                );
+                ctx.fillStyle = 'rgba(0, 212, 255, 0.2)';
+                ctx.fill();
+
+                // Vertical line to entity
+                ctx.strokeStyle = 'rgba(0, 212, 255, 0.5)';
+                ctx.setLineDash([4, 4]);
+                ctx.beginPath();
+                ctx.moveTo(isoX(entity.x, entity.y), isoY(entity.x, entity.y, 0));
+                ctx.lineTo(px, py);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // Entity sphere
+                const gradient = ctx.createRadialGradient(px - 3, py - 3, 0, px, py, 12);
+                gradient.addColorStop(0, '#00ffff');
+                gradient.addColorStop(0.5, '#00d4ff');
+                gradient.addColorStop(1, '#0088aa');
+
+                ctx.beginPath();
+                ctx.arc(px, py, 10, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Label
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '10px Consolas';
+                ctx.textAlign = 'center';
+                ctx.fillText(`#${entity.id}`, px, py - 16);
+            }
+
+            document.getElementById('vizOverlay').textContent =
+                `VIEW: 3D ISOMETRIC | ENTITIES: ${state.entities.length}`;
+        }
+
+        function renderTimeline() {
+            const ctx = timelineCtx;
+            const canvas = timelineCanvas;
+
+            ctx.fillStyle = '#0a0a12';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const padding = { left: 40, right: 10, top: 5, bottom: 20 };
+            const width = canvas.width - padding.left - padding.right;
+            const height = canvas.height - padding.top - padding.bottom;
+
+            // Draw grid
+            ctx.strokeStyle = '#1a1a2a';
+            ctx.lineWidth = 1;
+
+            for (let i = 0; i <= 4; i++) {
+                const y = padding.top + (height / 4) * i;
+                ctx.beginPath();
+                ctx.moveTo(padding.left, y);
+                ctx.lineTo(padding.left + width, y);
+                ctx.stroke();
+            }
+
+            // Y-axis labels
+            ctx.fillStyle = '#666';
+            ctx.font = '9px Consolas';
+            ctx.textAlign = 'right';
+            ctx.fillText('1.0', padding.left - 5, padding.top + 4);
+            ctx.fillText('0.5', padding.left - 5, padding.top + height / 2 + 4);
+            ctx.fillText('0.0', padding.left - 5, padding.top + height + 4);
+
+            // Draw activity line
+            if (state.timeline.timestamps.length > 1) {
+                const times = state.timeline.timestamps;
+                const minTime = times[0];
+                const maxTime = times[times.length - 1];
+                const timeRange = Math.max(maxTime - minTime, 1);
+
+                // Activity line
+                ctx.strokeStyle = '#00d4ff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+
+                for (let i = 0; i < times.length; i++) {
+                    const x = padding.left + ((times[i] - minTime) / timeRange) * width;
+                    const y = padding.top + height - (state.timeline.activity[i] * height);
+
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                ctx.stroke();
+
+                // Novelty line
+                ctx.strokeStyle = '#ff8844';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+
+                for (let i = 0; i < times.length; i++) {
+                    const x = padding.left + ((times[i] - minTime) / timeRange) * width;
+                    const y = padding.top + height - (state.timeline.novelty[i] * height);
+
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                ctx.stroke();
+            }
+
+            // Legend
+            ctx.fillStyle = '#00d4ff';
+            ctx.fillRect(canvas.width - 100, 5, 10, 10);
+            ctx.fillStyle = '#888';
+            ctx.font = '9px Segoe UI';
+            ctx.textAlign = 'left';
+            ctx.fillText('Activity', canvas.width - 85, 13);
+
+            ctx.fillStyle = '#ff8844';
+            ctx.fillRect(canvas.width - 100, 18, 10, 10);
+            ctx.fillStyle = '#888';
+            ctx.fillText('Novelty', canvas.width - 85, 26);
+        }
+
+        // =============================================================================
+        // VIEW SWITCHING
+        // =============================================================================
+
+        function setupViewTabs() {
+            const tabs = document.querySelectorAll('.view-tab');
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    tabs.forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    state.currentView = tab.dataset.view;
+                });
+            });
+        }
+
+        // =============================================================================
+        // MAIN RENDER LOOP (READ-ONLY)
+        // =============================================================================
+
+        function renderLoop() {
+            // Update UI from current state (no state modification)
+            updateMetricsUI();
+            updateEntityListUI();
+            renderVisualization();
+            renderTimeline();
+
+            // Schedule next frame
+            requestAnimationFrame(renderLoop);
+        }
+
+        // =============================================================================
+        // INITIALIZATION
+        // =============================================================================
+
+        function init() {
+            console.log('[Dashboard] Initializing CSI Spatial Sensing Dashboard');
+            console.log('[Dashboard] Backend WebSocket endpoint:', CONFIG.WS_URL);
+
+            // Setup UI
+            setupViewTabs();
+            resizeCanvases();
+
+            // Handle window resize
+            window.addEventListener('resize', resizeCanvases);
+
+            // Display backend URL
+            document.getElementById('backendUrl').textContent = CONFIG.WS_URL;
+
+            // Connect to backend
+            connectWebSocket();
+
+            // Start render loop (runs independently of WebSocket connection)
+            renderLoop();
+
+            console.log('[Dashboard] Render loop started. Dashboard will continue running even if backend is unavailable.');
+        }
+
+        // Start when DOM is ready
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
