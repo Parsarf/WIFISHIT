@@ -466,8 +466,7 @@
         // =============================================================================
 
         const CONFIG = {
-            // WebSocket endpoint - modify this to change backend URL
-            WS_URL: 'ws://localhost:8000/ws',
+            WS_URL: (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws',
 
             // Reconnection settings
             RECONNECT_INTERVAL_MS: 3000,

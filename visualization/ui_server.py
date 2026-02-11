@@ -54,8 +54,8 @@ from contracts import Measurement
 class ServerConfig:
     """Server configuration parameters."""
 
-    host: str = "localhost"
-    port: int = 8000
+    host: str = "0.0.0.0"
+    port: int = 5000
     ws_path: str = "/ws"
 
     target_fps: float = 8.0
@@ -554,11 +554,24 @@ class SystemStateManager:
 
 
 if HAS_FASTAPI:
+    from fastapi.responses import HTMLResponse
+    from pathlib import Path
+
     app = FastAPI(title="CSI Sensing UI Server")
 
     state_manager: Optional[SystemStateManager] = None
     active_websocket: Optional[WebSocket] = None
     running = True
+
+    DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "dashboard"
+
+    @app.get("/", response_class=HTMLResponse)
+    async def serve_dashboard():
+        html_path = DASHBOARD_DIR / "index.html"
+        return HTMLResponse(
+            content=html_path.read_text(),
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
 
     @app.on_event("startup")
     async def startup_event() -> None:
@@ -627,10 +640,6 @@ if HAS_FASTAPI:
         finally:
             if active_websocket == websocket:
                 active_websocket = None
-
-    @app.get("/")
-    async def root() -> Dict[str, str]:
-        return {"status": "running", "service": "CSI Sensing UI Server"}
 
     @app.get("/status")
     async def status() -> Dict[str, Any]:
@@ -724,8 +733,8 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="CSI Sensing UI Server")
-    parser.add_argument("--host", default="localhost", help="Host to bind to")
-    parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
+    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
+    parser.add_argument("--port", type=int, default=5000, help="Port to bind to")
     parser.add_argument("--fps", type=float, default=8.0, help="Target update rate (Hz)")
 
     args = parser.parse_args()
